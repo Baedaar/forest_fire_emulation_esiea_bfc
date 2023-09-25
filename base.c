@@ -12,6 +12,8 @@ struct forest forest;
 struct cell cell;
 extern const int numPredefinedInfos;
 extern struct predefinedInfo predefinedInfos[];
+int iterationCounter = 0;
+
 
 
 
@@ -63,6 +65,7 @@ void fillForestManually() {
             do {
                 printf("Entrez le type pour la case [%d][%d] : ", i, j);
                 forest.matrice[i][j].type = (char *)malloc(20 * sizeof(char));
+                forest.matrice[i][j].decremented = 0; // Initialiser decremented à 0
                 scanf("%19s", forest.matrice[i][j].type);
 
                 if (isTypeValid(forest.matrice[i][j].type)) {
@@ -94,6 +97,7 @@ void fillForestAutomatically() {
             forest.matrice[i][j].degree = info.degree;
             forest.matrice[i][j].state = info.state;
             forest.matrice[i][j].type = (char *)malloc(strlen(info.type) + 1);
+            forest.matrice[i][j].decremented = 0; // Initialiser decremented à 0
             forest.matrice[i][j].isSelected = 0; // Initialiser isSelected à 0
             strcpy(forest.matrice[i][j].type, info.type);
         }
@@ -115,52 +119,57 @@ void printForest() {
 }
 
 
-// Définir une fonction récursive pour mettre à jour les cellules voisines
 void updateNeighboringCells(struct forest *forest, int x, int y) {
-    // Vérifier les limites de l'indice
+
+    // Vérifier si la cellule sélectionnée est valide
     if (x < 0 || x >= forest->rows || y < 0 || y >= forest->columns) {
-        return; // Sortir de la fonction si les limites sont dépassées
+        return; // Sortir de la fonction si la cellule sélectionnée n'est pas valide
     }
 
-    // Sélectionner ou désélectionner la case
-    forest->matrice[x][y].isSelected = !forest->matrice[x][y].isSelected;
-
-    char selectedSymbol = (forest->matrice[x][y].isSelected) ? '-' : '@'; 
-
-    // Mettre à jour le degré de la cellule
-    if (forest->matrice[x][y].degree >= 2) {
-        forest->matrice[x][y].degree -= 1;
-        if (forest->matrice[x][y].degree == 1)
-        {
-            forest->matrice[x][y].symbol = '-';
-        }
-        
+    // Vérifier si la cellule a déjà été décrémentée
+    if (forest->matrice[x][y].decremented == 1) {
+        return; // Sortir si la cellule a déjà été décrémentée
     }
 
     // Mettre à jour le symbole de la cellule
-     if (forest->matrice[x][y].degree == 0 && strcmp(forest->matrice[x][y].type, "sol") != 0 && strcmp(forest->matrice[x][y].type, "eau") != 0) {
-        forest->matrice[x][y].symbol = '@';
+    if (forest->matrice[x][y].degree == 1 ) {
+        if (strcmp(forest->matrice[x][y].type, "sol") != 0 && strcmp(forest->matrice[x][y].type, "eau") != 0) {
+            forest->matrice[x][y].symbol = '-';
+        } else if (strcmp(forest->matrice[x][y].type, "sol") != 0 && strcmp(forest->matrice[x][y].type, "eau") != 0 || forest->matrice[x][y].degree == 0) 
+        {
+            forest->matrice[x][y].symbol = '@';
+        }
+         {
+            forest->matrice[x][y].symbol = '@';
+        }
     }
 
-    // Itérer à travers les 8 voisins de la case sélectionnée
+    // Décrémenter le degré de la cellule
+    if (forest->matrice[x][y].degree != 0)
+    {
+        forest->matrice[x][y].degree--;
+    }
+    forest->matrice[x][y].decremented = 1; // Marquer la cellule comme décrémentée
+
+    // Parcourir les 8 voisins de la case sélectionnée
     for (int i = x - 1; i <= x + 1; i++) {
         for (int j = y - 1; j <= y + 1; j++) {
-            // Éviter de mettre à jour la case d'origine à nouveau
-            if (i == x && j == y) {
-                continue;
-            }
-
-            // Mettre à jour les voisins qui sont à l'intérieur des limites
-            if (i >= 0 && i < forest->rows && j >= 0 && j < forest->columns) {
-                if (forest->matrice[i][j].degree >= 2) {
+            // Vérifier les limites de l'indice et éviter de mettre à jour la case d'origine à nouveau
+            if (i >= 0 && i < forest->rows && j >= 0 && j < forest->columns && !(i == x && j == y)) {
+                // Vérifier si le voisin n'a pas encore été décrémenté
+                if (!forest->matrice[i][j].decremented) {
+                    printf("Calling updateNeighboringCells for cell [%d][%d]\n", i, j);
                     // Appeler récursivement la fonction pour mettre à jour les voisins
                     updateNeighboringCells(forest, i, j);
+                    iterationCounter++;
+                    forest->matrice[x][y].decremented = 0;
+
+                    break;
                 }
             }
         }
     }
 }
-
 // Fonction pour gérer le déplacement dans la forêt
 void navigateForest(struct forest *forest) {
     int cursorX = 0;
@@ -231,7 +240,7 @@ void navigateForest(struct forest *forest) {
             cursorY++;
         }
         break;
-    case ' ':
+    case 32:
                 // Appeler la fonction récursive pour mettre à jour la cellule actuelle et les cellules voisines
                 updateNeighboringCells(forest, cursorX, cursorY);
                 refresh(); // Mettre à jour l'écran

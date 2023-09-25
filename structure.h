@@ -9,6 +9,7 @@ struct cell
     int degree;
     int state;
     int isSelected;
+    int decremented;
 };
 
 
