@@ -1,38 +1,34 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <ncurses.h>
 #include <unistd.h>
 #include "structure.h"
 #include "predefined_info.h"
 
-
 struct forest forest;
 struct cell cell;
 extern const int numPredefinedInfos;
 extern struct predefinedInfo predefinedInfos[];
-int iterationCounter = 0;
+int iterationMax = 0;
+struct cell ***temporaryForests;
 
-
-
-
-void initializeForestInteractive() {
+void interactiveFill()
+{
     printf("Entrez le nombre de lignes : ");
-    scanf("%d", &forest.rows);
-    
+    scanf("%d", &forest.lignes);
+
     printf("Entrez le nombre de colonnes : ");
-    scanf("%d", &forest.columns);
-    
-    initializeForest(&forest);
+    scanf("%d", &forest.colonnes);
+
+    startForest(&forest);
+    initNextChanges(&forest);
 }
 
-// Fonction permettant de vérifier le symbole entré par l'utilisateur
-int isSymbolValid(char symbol) {
-    if (symbol == '+' || symbol == '*'
-     || symbol == ' ' || symbol == '#'
-      || symbol == 'x' || symbol == '/'
-       || symbol == '-' || symbol == '@' )
+int isTypeValid(char type[])
+{
+    if (strcmp(type, "sol") == 0 || strcmp(type, "arbre") == 0 || strcmp(type, "feuille") == 0 || strcmp(type, "roche") == 0 || strcmp(type, "herbe") == 0 || strcmp(type, "eau") == 0 || strcmp(type, "cendres") == 0 || strcmp(type, "cendres eteintes") == 0)
     {
         return 1;
     }
@@ -42,35 +38,26 @@ int isSymbolValid(char symbol) {
     }
 }
 
-// Fonction permettant de vérifier le type entré par l'utilisateur.
-int isTypeValid (char type[]) {
-    if (strcmp(type, "sol") == 0 || strcmp(type, "arbre") == 0
-     || strcmp(type, "feuille") == 0 || strcmp(type, "roche") == 0
-      || strcmp(type, "herbe") == 0 || strcmp(type, "eau") == 0
-       || strcmp(type, "cendres") == 0 || strcmp(type, "cendres eteintes") == 0)
+void manuallyFill()
+{
+    for (int i = 0; i < forest.lignes; i++)
     {
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-
-}
-
-void fillForestManually() {
-    for (int i = 0; i < forest.rows; i++) {
-        for (int j = 0; j < forest.columns; j++) {
+        for (int j = 0; j < forest.colonnes; j++)
+        {
             int typeValid = 0;
-            do {
+            do
+            {
                 printf("Entrez le type pour la case [%d][%d] : ", i, j);
                 forest.matrice[i][j].type = (char *)malloc(20 * sizeof(char));
-                forest.matrice[i][j].decremented = 0; // Initialiser decremented à 0
+                forest.matrice[i][j].decremented = 0;
                 scanf("%19s", forest.matrice[i][j].type);
 
-                if (isTypeValid(forest.matrice[i][j].type)) {
+                if (isTypeValid(forest.matrice[i][j].type))
+                {
                     typeValid = 1;
-                } else {
+                }
+                else
+                {
                     printf("Type non valide. Réessayez.\n");
                 }
 
@@ -80,211 +67,316 @@ void fillForestManually() {
             } while (!typeValid);
 
             struct predefinedInfo info = getInfoForType(forest.matrice[i][j].type);
-            forest.matrice[i][j].symbol = info.symbol;
+            forest.matrice[i][j].symbole = info.symbole;
             forest.matrice[i][j].degree = info.degree;
-            forest.matrice[i][j].state = info.state;
-            forest.matrice[i][j].isSelected = 0; // Initialiser isSelected à 0
+            forest.matrice[i][j].etat = info.etat;
+            forest.matrice[i][j].isSelected = 0;
         }
     }
 }
 
-void fillForestAutomatically() {
-    for (int i = 0; i < forest.rows; i++) {
-        for (int j = 0; j < forest.columns; j++) {
-            int randomIndex = rand() % numPredefinedInfos;
-            struct predefinedInfo info = predefinedInfos[randomIndex];
-            forest.matrice[i][j].symbol = info.symbol;
+void fillForestAutomatically()
+{
+    for (int i = 0; i < forest.lignes; i++)
+    {
+        for (int j = 0; j < forest.colonnes; j++)
+        {
+            int randomIndex;
+            struct predefinedInfo info;
+            do
+            {
+                randomIndex = rand() % numPredefinedInfos;
+                info = predefinedInfos[randomIndex];
+            } while (strcmp(info.type, "cendres") == 0 || strcmp(info.type, "cendres eteintes") == 0);
+
+            forest.matrice[i][j].symbole = info.symbole;
             forest.matrice[i][j].degree = info.degree;
-            forest.matrice[i][j].state = info.state;
+            forest.matrice[i][j].etat = info.etat;
             forest.matrice[i][j].type = (char *)malloc(strlen(info.type) + 1);
             forest.matrice[i][j].decremented = 0; // Initialiser decremented à 0
-            forest.matrice[i][j].isSelected = 0; // Initialiser isSelected à 0
             strcpy(forest.matrice[i][j].type, info.type);
         }
     }
 }
 
-
-
-
-// Fonction pour afficher la forêt
-void printForest() {
-    printf("Grille de la forêt :\n");
-    for (int i = 0; i < forest.rows; i++) {
-        for (int j = 0; j < forest.columns; j++) {
-            printf("%c", forest.matrice[i][j].symbol);
-        }
-        printf("\n");
-    }
+void askForIteration()
+{
+    printf("Entrez le nombre d'itérations pour la propagation du feu : ");
+    scanf("%d", &iterationMax);
 }
 
-
-void updateNeighboringCells(struct forest *forest, int x, int y) {
-
-    // Vérifier si la cellule sélectionnée est valide
-    if (x < 0 || x >= forest->rows || y < 0 || y >= forest->columns) {
-        return; // Sortir de la fonction si la cellule sélectionnée n'est pas valide
-    }
-
-    // Vérifier si la cellule a déjà été décrémentée
-    if (forest->matrice[x][y].decremented == 1) {
-        return; // Sortir si la cellule a déjà été décrémentée
-    }
-
-    // Mettre à jour le symbole de la cellule
-    if (forest->matrice[x][y].degree == 1 ) {
-        if (strcmp(forest->matrice[x][y].type, "sol") != 0 && strcmp(forest->matrice[x][y].type, "eau") != 0) {
-            forest->matrice[x][y].symbol = '-';
-        } else if (strcmp(forest->matrice[x][y].type, "sol") != 0 && strcmp(forest->matrice[x][y].type, "eau") != 0 || forest->matrice[x][y].degree == 0) 
-        {
-            forest->matrice[x][y].symbol = '@';
-        }
-         {
-            forest->matrice[x][y].symbol = '@';
-        }
-    }
-
-    // Décrémenter le degré de la cellule
-    if (forest->matrice[x][y].degree != 0)
+void firePropagation(struct forest *forest)
+{
+    for (int x = 0; x < forest->lignes; x++)
     {
-        forest->matrice[x][y].degree--;
+        for (int y = 0; y < forest->colonnes; y++)
+        {
+            struct cell *currentCell = &forest->matrice[x][y];
+            if (forest->nextChanges[x][y] == 1 && strcmp(currentCell->type, "sol") != 0 && strcmp(currentCell->type, "eau") != 0)
+            {
+                currentCell->etat = 1;
+            }
+            forest->nextChanges[x][y] = 0;
+        }
     }
-    forest->matrice[x][y].decremented = 1; // Marquer la cellule comme décrémentée
 
-    // Parcourir les 8 voisins de la case sélectionnée
-    for (int i = x - 1; i <= x + 1; i++) {
-        for (int j = y - 1; j <= y + 1; j++) {
-            // Vérifier les limites de l'indice et éviter de mettre à jour la case d'origine à nouveau
-            if (i >= 0 && i < forest->rows && j >= 0 && j < forest->columns && !(i == x && j == y)) {
-                // Vérifier si le voisin n'a pas encore été décrémenté
-                if (!forest->matrice[i][j].decremented) {
-                    printf("Calling updateNeighboringCells for cell [%d][%d]\n", i, j);
-                    // Appeler récursivement la fonction pour mettre à jour les voisins
-                    updateNeighboringCells(forest, i, j);
-                    iterationCounter++;
-                    forest->matrice[x][y].decremented = 0;
+    for (int x = 0; x < forest->lignes; x++)
+    {
+        for (int y = 0; y < forest->colonnes; y++)
+        {
+            struct cell *currentCell = &forest->matrice[x][y];
+            if (currentCell->etat == 1 && strcmp(currentCell->type, "sol") != 0 && strcmp(currentCell->type, "eau") != 0)
+            {
+                for (int i = x - 1; i <= x + 1; i++)
+                {
+                    for (int j = y - 1; j <= y + 1; j++)
+                    {
+                        if (i >= 0 && i < forest->lignes && j >= 0 && j < forest->colonnes && !(i == x && j == y))
+                        {
+                            struct cell *neighboringCell = &forest->matrice[i][j];
+                            if (strcmp(neighboringCell->type, "sol") != 0 &&
+                                strcmp(neighboringCell->type, "eau") != 0 &&
+                                strcmp(neighboringCell->type, "cendres eteintes") != 0 &&
+                                neighboringCell->etat != 1)
+                            {
+                                forest->nextChanges[i][j] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-                    break;
+    for (int x = 0; x < forest->lignes; x++)
+    {
+        for (int y = 0; y < forest->colonnes; y++)
+        {
+            struct cell *currentCell = &forest->matrice[x][y];
+            if (currentCell->etat == 1 && strcmp(currentCell->type, "sol") != 0 && strcmp(currentCell->type, "eau") != 0)
+            {
+                currentCell->degree--;
+
+                if (currentCell->degree == 0 && strcmp(currentCell->type, "sol") != 0 && strcmp(currentCell->type, "eau") != 0)
+                {
+                    struct predefinedInfo newInfo = getInfoForType("cendres eteintes");
+                    strcpy(currentCell->type, newInfo.type);
+                    currentCell->symbole = newInfo.symbole;
+                    currentCell->etat = 0;
                 }
             }
         }
     }
 }
-// Fonction pour gérer le déplacement dans la forêt
-void navigateForest(struct forest *forest) {
-    int cursorX = 0;
-    int cursorY = 0;
-    bool isCellSelected = false;
 
-    int ch; // Variable pour stocker les entrées clavier
-    int sel; // Variable pour stocker la cellule selectionée
+void saveCurrentForest(int iteration)
+{
+    for (int i = 0; i < forest.lignes; i++)
+    {
+        for (int j = 0; j < forest.colonnes; j++)
+        {
+            temporaryForests[iteration][i][j] = forest.matrice[i][j];
+        }
+    }
+}
 
-   
-    // Initialiser ncurses
-    initscr();
-     // Initialiser ncurses pour la gestion des couleurs
-    start_color();
-    init_pair(1, COLOR_RED, COLOR_BLACK); // Pair de couleur pour le texte rouge sur fond noir
-    keypad(stdscr, TRUE); // Activer la gestion des touches spéciales
-    noecho(); // Désactiver l'affichage automatique des touches
+void printSavedForest(int iteration)
+{
+    printf("État de la forêt à l'itération %d :\n", iteration + 1);
+    for (int i = 0; i < forest.lignes; i++)
+    {
+        for (int j = 0; j < forest.colonnes; j++)
+        {
+            printf("%c", temporaryForests[iteration][i][j].symbole);
+        }
+        printf("\n");
+    }
+}
 
-    // Boucle pour la navigation
-    do {
-        // Effacer l'écran
-        clear();
-
-        // Afficher la forêt avec le curseur
-    for (int i = 0; i < forest->rows; i++) {
-        for (int j = 0; j < forest->columns; j++) {
-            if (i == cursorX && j == cursorY) {
-                attron(A_BOLD); // Activer l'attribut de texte en gras
-                printw("O"); // Afficher le curseur
-                attroff(A_BOLD); // Désactiver l'attribut de texte en gras
-            } 
-            else {
-                printw("%c", forest->matrice[i][j].symbol);
+int isFireOver(struct forest *forest)
+{
+    for (int x = 0; x < forest->lignes; x++)
+    {
+        for (int y = 0; y < forest->colonnes; y++)
+        {
+            struct cell currentCell = forest->matrice[x][y];
+            if (currentCell.etat == 1)
+            {
+                return 0;
+            }
+            if (strcmp(currentCell.type, "cendres") == 0 && strcmp(currentCell.type, "cendres eteintes") != 0)
+            {
+                return 0;
             }
         }
-        printw("\n");
+    }
+    return 1;
+}
+
+void freeTemporaryForest()
+{
+    for (int i = 0; i < iterationMax; i++)
+    {
+        for (int j = 0; j < forest.lignes; j++)
+        {
+            free(temporaryForests[i][j]);
+        }
+        free(temporaryForests[i]);
+    }
+    free(temporaryForests);
+}
+
+void navigateForest(struct forest *forest)
+{
+    int cursorX = 0, cursorY = 0;
+    int ch;
+    int totalIterations = 0;
+    temporaryForests = malloc(iterationMax * sizeof(struct cell **));
+    for (int i = 0; i < iterationMax; i++)
+    {
+        temporaryForests[i] = malloc(forest->lignes * sizeof(struct cell *));
+        for (int j = 0; j < forest->lignes; j++)
+        {
+            temporaryForests[i][j] = malloc(forest->colonnes * sizeof(struct cell));
+        }
     }
 
-    
+    initscr();
+    keypad(stdscr, TRUE);
+    noecho();
 
-        // Demander à l'utilisateur de saisir une touche
-        printw("Déplacez-vous (haut , bas , gauche , droite , selectionner/deselectionner ' ' quitter 'q'): ");
+    do
+    {
+        clear();
+        for (int i = 0; i < forest->lignes; i++)
+        {
+            for (int j = 0; j < forest->colonnes; j++)
+            {
+                if (i == cursorX && j == cursorY)
+                {
+                    attron(A_BOLD);
+                    printw("O");
+                    attroff(A_BOLD);
+                }
+                else
+                {
+                    printw("%c", forest->matrice[i][j].symbole);
+                }
+            }
+            printw("\n");
+        }
+
+        printw("Déplacez-vous (haut, bas, gauche, droite),\ndémarrez le feu (' '),\n'r' pour retourner sur une itération precedente à la fin de la simulation \nquittez ('q'): ");
         ch = getch();
 
-        if (ch == 'q') {
-            break; // Quitter si l'utilisateur le souhaite
+        switch (ch)
+        {
+        case KEY_UP:
+            cursorX = (cursorX > 0) ? cursorX - 1 : cursorX;
+            break;
+        case KEY_DOWN:
+            cursorX = (cursorX < forest->lignes - 1) ? cursorX + 1 : cursorX;
+            break;
+        case KEY_LEFT:
+            cursorY = (cursorY > 0) ? cursorY - 1 : cursorY;
+            break;
+        case KEY_RIGHT:
+            cursorY = (cursorY < forest->colonnes - 1) ? cursorY + 1 : cursorY;
+            break;
+        case ' ':
+            forest->matrice[cursorX][cursorY].etat = 1;
+            int currentIteration = 0;
+            while (!isFireOver(forest) && currentIteration < iterationMax)
+            {
+                firePropagation(forest);
+                clear();
+                saveCurrentForest(currentIteration);
+                for (int i = 0; i < forest->lignes; i++)
+                {
+                    for (int j = 0; j < forest->colonnes; j++)
+                    {
+                        printw("%c", forest->matrice[i][j].symbole);
+                    }
+                    printw("\n");
+                }
+                printw("Itération n° %d\n", totalIterations + 1);
+                refresh();
+                sleep(1);
+                currentIteration++;
+                totalIterations++;
+            }
+            totalIterations = 0;
+            break;
+        case 'r':
+            echo();
+            printw("\nEntrez un numéro d'itération pour revoir son état ou -1 pour revenir: ");
+            refresh();
+
+            int reviewIteration;
+            scanw("%d", &reviewIteration);
+            while (reviewIteration != -1)
+            {
+                if (reviewIteration >= 0 && reviewIteration < iterationMax)
+                {
+                    for (int i = 0; i < forest->lignes; i++)
+                    {
+                        for (int j = 0; j < forest->colonnes; j++)
+                        {
+                            printw("%c", temporaryForests[reviewIteration][i][j].symbole);
+                        }
+                        printw("\n");
+                    }
+                    printw("\nItération n° %d. Appuyez sur n'importe quelle touche pour continuer...", reviewIteration + 1);
+                    refresh();
+                    getch();
+                }
+                else
+                {
+                    printw("\nNuméro d'itération non valide. Appuyez sur n'importe quelle touche pour continuer...");
+                    refresh();
+                    getch();
+                }
+                clear();
+                printw("Entrez un autre numéro d'itération ou -1 pour revenir: ");
+                refresh();
+                scanw("%d", &reviewIteration);
+            }
+            noecho();
+            clear();
+            break;
         }
 
-        // Déplacer le curseur en fonction de la touche saisie
-        switch (ch) {
-    case KEY_UP:    // Flèche vers le haut
-        if (cursorX > 0) {
-            cursorX--;
-        }
-        break;
-    case KEY_DOWN:  // Flèche vers le bas
-        if (cursorX < forest->rows - 1) {
-            cursorX++;
-        }
-        break;
-    case KEY_LEFT:  // Flèche vers la gauche
-        if (cursorY > 0) {
-            cursorY--;
-        }
-        break;
-    case KEY_RIGHT: // Flèche vers la droite
-        if (cursorY < forest->columns - 1) {
-            cursorY++;
-        }
-        break;
-    case 32:
-                // Appeler la fonction récursive pour mettre à jour la cellule actuelle et les cellules voisines
-                updateNeighboringCells(forest, cursorX, cursorY);
-                refresh(); // Mettre à jour l'écran
-                usleep(500000);
-                break;
-}
-
-    } while (1); // Boucle infinie pour la navigation
-
-    // Fermer ncurses
+        refresh();
+    } while (ch != 'q');
     endwin();
+    freeTemporaryForest();
 }
 
-int main() {
+int main()
+{
 
     int fillingMode;
     srand(time(NULL));
-    
-    initializeForestInteractive();
-
+    interactiveFill();
     printf(" Remplissage Manuel : 1 ou auto : 2 ? ");
     scanf("%d", &fillingMode);
-
-    // Switch permettant de laisser le choix à l'utilisateur du mode de remplissage de la forêt.
     switch (fillingMode)
     {
     case 1:
-        fillForestManually();
+        manuallyFill();
         break;
 
-        case 2:
-             fillForestAutomatically();
-            break;
-    
+    case 2:
+        fillForestAutomatically();
+        break;
+
     default:
         break;
     }
-    
-    // fonction permettant d'afficher la forêt.
-    printForest();
 
+    askForIteration();
     navigateForest(&forest);
-    
-    // Fonction permettant de libérer la mémoire allouée à la forêt.
+
+    freeNextChanges(&forest);
     freeForest(&forest);
-    
 }

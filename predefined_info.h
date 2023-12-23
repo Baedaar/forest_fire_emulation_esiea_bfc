@@ -3,16 +3,14 @@
 
 #include "structure.h"
 
-// Structure pour stocker les informations pré-définies pour chaque type
-struct predefinedInfo {
-    char type[20]; // Le type
-    char symbol;   // Le symbole
-    int degree;    // Le degré
-    int state;     // L'état
+struct predefinedInfo
+{
+    char type[20];
+    char symbole;
+    int degree;
+    int etat;
 };
 
-
-// Fonction pour obtenir les informations pré-définies en fonction du type
 struct predefinedInfo getInfoForType(const char *type);
 
 #endif

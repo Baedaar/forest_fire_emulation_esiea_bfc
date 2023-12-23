@@ -1,34 +1,27 @@
-#ifndef FORREST 
+#ifndef FORREST
 #define FORREST
 
-// Structure définissant chaque attribut d'une cellule composant la forêt.
 struct cell
 {
     char *type;
-    char symbol;
+    char symbole;
     int degree;
-    int state;
+    int etat;
     int isSelected;
     int decremented;
 };
 
-
-
-// Structure pour créer la forêt.
 struct forest
 {
-    int rows;
-    int columns;
+    int lignes;
+    int colonnes;
     struct cell **matrice;
+    int **nextChanges;
 };
 
-
-// Déclaration de fonctions allouant et libérant de la mémoire pour la fôret et les cellules.
-void initializeForest(struct forest *f);
+void startForest(struct forest *f);
 void freeForest(struct forest *f);
-
-
-
-
+void initNextChanges(struct forest *forest);
+void freeNextChanges(struct forest *forest);
 
 #endif
